@@ -10,11 +10,9 @@ from transformers import AdamW, get_linear_schedule_with_warmup, AutoModelForCau
 class GenerationModel(auto.Model):
     def __init__(self, num_train_steps, model_name='gpt2-base'):
         super().__init__()
-        #self.tokenizer = transformers.GPT2TokenizerFast.from_pretrained("gpt2")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         if 'gpt' in model_name:
             self.tokenizer.add_special_tokens({'pad_token': '<|padding|>'})
-        #self.model = transformers.GPT2Model.from_pretrained(f"gpt2-{model_size}")
         self.model = AutoModelForCausalLM.from_pretrained(model_name)
         self.model.resize_token_embeddings(len(self.tokenizer))
         self._loss = nn.CrossEntropyLoss(ignore_index=self.tokenizer.padding_index)
@@ -57,17 +55,8 @@ class GenerationModel(auto.Model):
         )
         return loss
 
-    def monitor_metrics(self, outputs, targets):
-        if targets is None:
-            return {}
-        outputs = torch.argmax(outputs, dim=1).cpu().detach().numpy()
-        targets = targets.cpu().detach().numpy()
-        accuracy = metrics.accuracy_score(targets, outputs)
-        return {"accuracy": accuracy}
-
     def forward(self, batch):
         outputs = self.model(batch, return_dict=True)
         #loss = outputs.loss
         loss = self.loss(outputs, batch['labels'])
-        acc = self.monitor_metrics(outputs.logits, batch['labels'])
-        return outputs, loss, acc
+        return outputs, loss, {}

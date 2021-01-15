@@ -1,6 +1,6 @@
 # autobot: a simple pytorch trainer
 
-Tis a fork from tez
+This lib is a fork from tez. WIP.
 
 ### Training using Autobot:
 
