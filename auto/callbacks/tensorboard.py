@@ -1,4 +1,4 @@
-from tez.callbacks import Callback
+from auto.callbacks import Callback
 from torch.utils.tensorboard import SummaryWriter
 
 

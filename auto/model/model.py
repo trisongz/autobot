@@ -104,6 +104,7 @@ class Model(nn.Module):
                 shuffle=True,
                 collate_fn=train_collate_fn,
             )
+            self.train_bs = train_bs
         if self.valid_loader is None:
             if valid_dataset is not None:
                 self.valid_loader = torch.utils.data.DataLoader(
@@ -114,6 +115,7 @@ class Model(nn.Module):
                     shuffle=False,
                     collate_fn=valid_collate_fn,
                 )
+                self.valid_bs = valid_bs
 
         if self.optimizer is None:
             self.optimizer = self.fetch_optimizer()
@@ -157,6 +159,14 @@ class Model(nn.Module):
         self.optimizer.zero_grad()
         _, loss, metrics = self.model_fn(data)
         with torch.set_grad_enabled(True):
+            if self.scheduler:
+                if self.step_scheduler_after == "batch":
+                    if self.step_scheduler_metric is None:
+                        self.scheduler.step()
+                    else:
+                        step_metric = self.name_to_metric(self.step_scheduler_metric)
+                        self.scheduler.step(step_metric)
+
             if self.fp16:
                 with torch.cuda.amp.autocast():
                     self.scaler.scale(loss).backward()
@@ -165,13 +175,7 @@ class Model(nn.Module):
             else:
                 loss.backward()
                 self.optimizer.step()
-            if self.scheduler:
-                if self.step_scheduler_after == "batch":
-                    if self.step_scheduler_metric is None:
-                        self.scheduler.step()
-                    else:
-                        step_metric = self.name_to_metric(self.step_scheduler_metric)
-                        self.scheduler.step(step_metric)
+            
         return loss, metrics
 
     def validate_one_step(self, data):
@@ -190,10 +194,11 @@ class Model(nn.Module):
         self.train()
         self.model_state = enums.ModelState.TRAIN
         losses = AverageMeter()
-        task_id = self.progress.add_task("train", mode='Train', epoch='1', batch_size=self.train_bs, start=False)
+        #task_id = self.progress.add_task("train", mode='Train', epoch='1', batch_size=self.train_bs, start=False)
         #self.progress.track(data_loader, total=len(data_loader), task_id=task_id, description='Training 1 Epoch')
-        #tk0 = tqdm(data_loader, total=len(data_loader))
-        for b_idx, data in enumerate(self.progress.track(data_loader, total=len(data_loader), task_id=task_id, description='Training 1 Epoch')):
+        tk0 = tqdm(data_loader, total=len(data_loader))
+        #for b_idx, data in enumerate(self.progress.track(data_loader, total=len(data_loader), task_id=task_id, description='Training 1 Epoch')):
+        for b_idx, data in enumerate(tk0):
             self.train_state = enums.TrainingState.TRAIN_STEP_START
             loss, metrics = self.train_one_step(data)
             self.train_state = enums.TrainingState.TRAIN_STEP_END
@@ -205,9 +210,9 @@ class Model(nn.Module):
                 metrics_meter[m_m].update(metrics[m_m], data_loader.batch_size)
                 monitor[m_m] = metrics_meter[m_m].avg
             self.current_train_step += 1
-            #tk0.set_postfix(loss=losses.avg, stage="train", **monitor)
-        #tk0.close()
-        self.progress.stop_task(task_id)
+            tk0.set_postfix(loss=losses.avg, stage="train", **monitor)
+        tk0.close()
+        #self.progress.stop_task(task_id)
         self.update_metrics(losses=losses, monitor=monitor)
         return losses.avg
 
@@ -215,9 +220,10 @@ class Model(nn.Module):
         self.eval()
         self.model_state = enums.ModelState.VALID
         losses = AverageMeter()
-        task_id = self.progress.add_task("validation", mode='Validation', epoch='1', batch_size=self.valid_bs, start=False)
-        #tk0 = tqdm(data_loader, total=len(data_loader))
-        for b_idx, data in enumerate(self.progress.track(data_loader, total=len(data_loader), task_id=task_id, description='Validating 1 Epoch')):
+        #task_id = self.progress.add_task("validation", mode='Validation', epoch='1', batch_size=self.valid_bs, start=False)
+        tk0 = tqdm(data_loader, total=len(data_loader))
+        #for b_idx, data in enumerate(self.progress.track(data_loader, total=len(data_loader), task_id=task_id, description='Validating 1 Epoch')):
+        for b_idx, data in enumerate(tk0):
             self.train_state = enums.TrainingState.VALID_STEP_START
             with torch.no_grad():
                 loss, metrics = self.validate_one_step(data)
@@ -229,10 +235,10 @@ class Model(nn.Module):
             for m_m in metrics_meter:
                 metrics_meter[m_m].update(metrics[m_m], data_loader.batch_size)
                 monitor[m_m] = metrics_meter[m_m].avg
-            #tk0.set_postfix(loss=losses.avg, stage="valid", **monitor)
+            tk0.set_postfix(loss=losses.avg, stage="valid", **monitor)
             self.current_valid_step += 1
-        #tk0.close()
-        self.progress.stop_task(task_id)
+        tk0.close()
+        #self.progress.stop_task(task_id)
         self.update_metrics(losses=losses, monitor=monitor)
         return losses.avg
 

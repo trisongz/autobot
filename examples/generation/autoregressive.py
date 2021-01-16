@@ -15,7 +15,7 @@ class GenerationModel(auto.Model):
             self.tokenizer.add_special_tokens({'pad_token': '<|padding|>'})
         self.model = AutoModelForCausalLM.from_pretrained(model_name)
         self.model.resize_token_embeddings(len(self.tokenizer))
-        self._loss = nn.CrossEntropyLoss(ignore_index=self.tokenizer.padding_index)
+        self._loss = nn.CrossEntropyLoss(ignore_index=self.tokenizer.pad_token_id)
         self.num_train_steps = num_train_steps
         self.step_scheduler_after = "batch"
 
@@ -55,8 +55,8 @@ class GenerationModel(auto.Model):
         )
         return loss
 
-    def forward(self, batch):
-        outputs = self.model(batch, return_dict=True)
-        #loss = outputs.loss
-        loss = self.loss(outputs, batch['labels'])
-        return outputs, loss, {}
+    def forward(self, **inputs):
+        outputs = self.genmodel(**inputs, return_dict=True)
+        loss = outputs.loss
+        loss = self.loss(outputs, inputs['labels'])
+        return outputs.logits, loss, {}

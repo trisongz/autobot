@@ -88,17 +88,17 @@ class AutoDataset(Dataset):
             total_lines = len(self.file_idx[x]['reader'])
             self.file_idx['stop'] = (self.total_lines + total_lines)
             if self.debug:
-                logger.debug(f'File IDX Start: {self.total_lines} - File IDX End: {self.total_lines + total_lines}')
+                logger.info(f'File IDX Start: {self.total_lines} - File IDX End: {self.total_lines + total_lines}')
             self.total_lines += total_lines
         if self.debug:
-            logger.debug(f'Total Files: {self.total_files}. Total Lines: {self.total_lines}')
+            logger.info(f'Total Files: {self.total_files}. Total Lines: {self.total_lines}')
     
     def get_file_line(self, idx):
         for x in range(len(self.files)):
             if idx in range(self.file_idx[x]['start'], self.file_idx[x]['stop']):
                 fidx = idx - self.file_idx[x]['start']
                 if self.debug:
-                    logger.debug(f'File IDX: {fidx}')
+                    logger.info(f'File IDX: {fidx}')
                 return self.file_idx[x]['reader'][fidx]
 
     def parse_json(self, line):
@@ -141,8 +141,8 @@ class AutoDataset(Dataset):
                     self.token_cache['encoder_attn'] = tokens['attention_mask'][_to_slice:].append(1) if tokens['attention_mask'][_to_slice:] else []
                     
             else:
-                result['input_ids'] = self.token_cache['encoder'][:self.params['src_max']]
-                result['attention_mask'] = self.token_cache['encoder_attn'][:self.params['src_max']]
+                result['input_ids'] = tokens['input_ids'][:self.params['src_max']]
+                result['attention_mask'] = tokens['attention_mask'][:self.params['src_max']]
                 self.token_cache['encoder'] = tokens['input_ids'][self.params['src_max']:].append(self.sep_token) if tokens['input_ids'][self.params['src_max']:] else []
                 self.token_cache['encoder_attn'] = tokens['attention_mask'][self.params['src_max']:].append(1) if tokens['attention_mask'][self.params['src_max']:] else []
             
@@ -178,7 +178,7 @@ class AutoDataset(Dataset):
             while True:
                 new_idx = random.randint(0, self.total_lines)
                 if self.debug:
-                    logger.debug(f'Bad IDX: {idx} - New Random IDX: {new_idx}')
+                    logger.info(f'Bad IDX: {idx} - New Random IDX: {new_idx}')
                 ex = self.get_file_line(new_idx)
                 if ex:
                     break
@@ -189,18 +189,20 @@ class AutoDataset(Dataset):
     
     def __getitem__(self, idx):
         if self.debug:
-            logger.debug(f'Getting IDX: {idx}')
+            logger.info(f'Getting IDX: {idx}')
         ex = self._get_example(idx)
         if self._seq_len(ex) or self.is_encdec:
             return self.tokenize_example(ex)
         else:
+            cidx = 1
             while True:
                 self.text_chunks = self.text_chunks + (ex[self.params['src_name']] + ' ' + self.sep_word)
-                if self._seq_len(self.text_chunks):
+                if self._seq_len({self.params['src_name']: self.text_chunks}):
                     result = self.tokenize_example({self.params['src_name']: self.text_chunks})
                     self.text_chunks = ''
                     break
-                ex = self._get_example(idx+1)
+                ex = self._get_example(idx+cidx)
+                cidx += 1
             return result
 
     def __len__(self):
